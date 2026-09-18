@@ -17,7 +17,7 @@ Skill 是模块化、自包含的能力文件夹，通过专门的工作流程�
 
 - `SKILL.md`（必需）：YAML frontmatter（`name`、`description`）+ 使用说明，Agent 据此判断何时触发；
 - `references/`（按需）：执行过程中按需加载的参考文档、规范与模板；
-- `scripts/`、`assets/`（按需）：可执行脚本与更多。
+- `scripts/`、`assets/`（按需）：可执行脚本与产出用资源。
 
 ## 目录结构
 

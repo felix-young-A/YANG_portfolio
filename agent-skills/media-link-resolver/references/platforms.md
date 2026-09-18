@@ -234,7 +234,7 @@ def extract_ig_shortcode(url):
 **slides / 视频作品有永久入口链，图片流没有**：
 - **作品判定（v4.8 增强）**：能解析出 vid（顶层 `video.uri`，**为空回退 `play_addr.uri`**）= 视频作品；`images[i]` 能解析出 vid（`video.uri` → 为空回退 `play_addr.uri`）= slides（幻灯片 / 图集带视频流），每片一个 vid；纯图文 note 无 video 字段。
 - **入口链**：`https://aweme.snssdk.com/aweme/v1/play/?video_id=<vid>&ratio=1080p&line=0`，备用主机 `www.douyin.com`、`api.amemv.com`。
-- **v4.8 实测踩坑（2026-09-17）**：slides 详情响应中 `images[i].video.uri` **常为空**，vid 实际藏在 `images[i].video.play_addr.uri`（形如 `v0200fg10000dal8p1vog65thq9b1jo0`）；且 slides 可"图 + 视频"混合（实测 aweme_id `7686110919500390729` 共 5 片、仅第 1 片有视频流），**并非每片都入口链**。回退值须做纯 id 校验（不含 `http` / `/`），否则会把顶层 BGM mp3 URL 误当 vid 拼出废链。
+- **v4.8 实测踩坑（2026-09-17）**：slides 详情响应中 `images[i].video.uri` **常为空**，vid 实际藏在 `images[i].video.play_addr.uri`（形如 `v0200fg10000dal8p1vog65thq9b1jo0`）；且 slides 可"图 + 视频"混合（实测 aweme_id `7686110919500390729` 共 5 片、仅第 1 片有视频流），**并非每片都有入口链**。回退值须做纯 id 校验（不含 `http` / `/`），否则会把顶层 BGM mp3 URL 误当 vid 拼出废链。
 - **实测**：免 Referer / 无签名，请求即 302 到新签名 douyinvod，返回 200 `video/mp4`；可嵌入 `<video>` 与 records 渲染，**无固定过期**（靠 video_id 换签名，与图片流的强制签名机制本质不同）。
 - **CLI**：`--play-entry <vid>`；分享页解析已自动输出（SSR 与 detail API 两条通路均覆盖）。
 - 注意：避免抽干式高频调用触发风控；BGM 仍走 douyinstatic 域（无防盗链）。

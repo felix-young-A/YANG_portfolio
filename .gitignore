@@ -1,0 +1,19 @@
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== 编辑器 / IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===== Agent skills 中间产物（音视频、转写底稿、模型与临时输出） =====
+agent-skills/**/output/
+agent-skills/**/*.tmp
+agent-skills/**/*.wav
+agent-skills/**/*.mp3
+agent-skills/**/*.m4a
+agent-skills/**/*.mp4

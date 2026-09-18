@@ -1118,7 +1118,7 @@ def _browser_intercept_api(start_url, api_fragments, timeout=45):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, executable_path=exe,
-                                        args=['--no-sandbox', '--disable-blink-features=AutomationControlled])
+                                        args=['--no-sandbox', '--disable-blink-features=AutomationControlled'])
             ctx = browser.new_context(user_agent=BROWSER_UA, locale='zh-CN',
                                       viewport={"width": 1280, "height": 900})
             page = ctx.new_page()
@@ -1255,7 +1255,7 @@ def resolve_zhihu(url):
     m = re.search(r'(pic\d?\.zhimg\.com/[^\s"\'?]+)', url)
     if m:
         return [m.group(1)]
-    if 'zhihu.com' in url or 'zhimg.com' url:
+    if 'zhihu.com' in url or 'zhimg.com' in url:
         return [url]
     return None
 

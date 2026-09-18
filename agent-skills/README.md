@@ -7,6 +7,7 @@
 | 技能 | 简介 | 状态 |
 | --- | --- | --- |
 | [`link-to-fieldnote`](./link-to-fieldnote) | 将视频/音频/网页链接或本地音视频文件，转化为结构化的 Obsidian Field Note 或原生文稿；知识笔记、原生文稿、网页清理三类任务自动路由 | 可用 |
+| [`media-link-resolver`](./media-link-resolver) | 社媒多平台媒体直链解析与页面嗅探：44+ 规则覆盖国内 25+ / 海外 15+ 平台，将 CDN 签名链、短链、网页链转换为永久或最优直链，支持 M3U8/MPD 流解析、媒体类型三重识别与抖音永久转播入口链 | 可用 |
 
 > 以后新增技能统一放在本目录下：一个技能一个同名文件夹，并在上表登记。
 
@@ -16,23 +17,30 @@ Skill 是模块化、自包含的能力文件夹，通过专门的工作流程�
 
 - `SKILL.md`（必需）：YAML frontmatter（`name`、`description`）+ 使用说明，Agent 据此判断何时触发；
 - `references/`（按需）：执行过程中按需加载的参考文档、规范与模板；
-- `scripts/`、`assets/`（按需）：可执行脚本与产出用资源。
+- `scripts/`、`assets/`（按需）：可执行脚本与更多。
 
 ## 目录结构
 
 ```text
 agent-skills/
 ├── README.md                     # 本说明（专区说明 + 技能索引）
-└── link-to-fieldnote/            # 技能：链接 → Field Note
+├── link-to-fieldnote/            # 技能：链接 → Field Note
+│   ├── SKILL.md
+│   └── references/
+│       ├── task-types.md
+│       ├── content-fetching.md
+│       ├── transcription.md
+│       ├── output-format-rules.md
+│       ├── writing-standards.md
+│       ├── templates.md
+│       └── quality-assurance.md
+└── media-link-resolver/          # 技能：社媒媒体直链解析与嗅探
     ├── SKILL.md
-    └── references/
-        ├── task-types.md
-        ├── content-fetching.md
-        ├── transcription.md
-        ├── output-format-rules.md
-        ├── writing-standards.md
-        ├── templates.md
-        └── quality-assurance.md
+    ├── references/
+    │   ├── platform-apis.md
+    │   └── platforms.md
+    └── scripts/
+        └── resolve_media_links.py
 ```
 
 ## 安装与使用

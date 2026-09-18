@@ -24,7 +24,7 @@ description: |
 - **响应头嗅探**（猫抓 findMedia 三重判断思路）：扩展名/魔数无法判定的 URL，按 Content-Type / Content-Length / Content-Range / Content-Disposition 判定媒体类型与大小。
 - **M3U8 master 选最高清档**（猫抓 hls.js 思路）：解析 `#EXT-X-STREAM-INF` 的 BANDWIDTH/RESOLUTION，按带宽从高到低排序输出（最高清档在前）。
 - **平台 CDN 域名识别**（智Tool manifest host_permissions）：9 大平台 CDN 域名清单（douyinvod/douyinpic/byteimg、xhscdn、sinaimg、toutiaovod、bilivideo、yximgs 等），嗅探结果自动标注平台。
-- **小红书笔记页解析**（智Tool API map：`/api/sns/h5/v1/note_info` + `/api/sns/web/v1/feed`）：浏览器拦截详情 API 提取视频（h264 master_url / origin_video_key）与图片（url_default/url/url_720w），有登录墙时明确提示。
+- **小红书笔记页解析**（智Tool API map：`/api/sns/h5/v1/note_info` + `/api/sns/web/v1/feed`）：浏览器拦截详情 API 提取视频（h264 master_url / origin_video_key）与图片（url_default/url_pre/url_720w），有登录墙时明确提示。
 - **微博详情页解析**（智Tool API map：`/ajax/statuses/show` + `/tv/api/component`）：浏览器拦截提取图片（oslarge 无水印永久）与视频（mp4_720p/mp4_hd 等）。
 - **通用浏览器拦截器 `_browser_intercept_api`**：打开页面 → 拦截页面自身 JSON API 响应（页面已自带签名/登录态），解决签名类反爬。
 
@@ -58,7 +58,7 @@ python3 scripts/resolve_media_links.py --platforms
 1. **识别平台**：URL 域名匹配 PLATFORM_RULES（44 项规则表）
 2. **转换直链**：调用平台解析器，优先输出永久直链
 3. **标注时效**：permanent=True/False/None + 时效提示 + **v4.5 签名过期时间**
-4. **媒体类型**：猫抓式扩展名 + CDN 特征双重识别（image/gif/animated/video/audio/stream），动图（Animated WebP/APN）通过 HTTP 魔数探测识别（**v4.5：需 ANIM+ANMF 帧才算动图**）
+4. **媒体类型**：猫抓式扩展名 + CDN 特征双重识别（image/gif/animated/video/audio/stream），动图（Animated WebP/APNG）通过 HTTP 魔数探测识别（**v4.5：需 ANIM+ANMF 帧才算动图**）
 5. **永久化落盘**：`--save <DIR>` 时把 `permanent=False` 的媒体全部下载到本地目录
 ### 模式 B：页面嗅探（sniff_page，猫抓式 + DataTool 式）
 1. **请求页面**：模拟浏览器 UA（支持 mobile UA 切换）

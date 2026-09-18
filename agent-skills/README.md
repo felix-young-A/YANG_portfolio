@@ -41,12 +41,12 @@ agent-skills/
    - 豆包 / Codex 类环境：`workspace/.user_skills/`（或当前环境对应的 skills 根目录）；
    - 其他 Agent：参照其文档指定的技能加载目录。
 2. 重启或刷新会话，Agent 会根据 `SKILL.md` 中的 `description` 自动识别触发场景。
-3. 直接给出链接或文件并说明需求即可，例如“帮我做个 field note”“转成逐字稿”。
+3. 直接给出链接或文件并说明需求即可，例如"帮我做个 field note""转成逐字稿"。
 
 ## 编写与维护约定
 
 - 一个技能一个文件夹，入口固定为 `SKILL.md`，frontmatter 只保留 `name` 与 `description`；
-- 详细规范、模板、检查清单等长内容放入 `references/`，并在 `SKILL.md` 中写明“何时读取”，避免执行时模块混淆；
+- 详细规范、模板、检查清单等长内容放入 `references/`，并在 `SKILL.md` 中写明"何时读取"，避免执行时模块混淆；
 - 技能文件夹内不放 README / CHANGELOG 等辅助文档（本文件仅承担专区级的说明与索引）；
 - 音频、视频、模型、转写底稿等中间产物不纳入版本库。
 

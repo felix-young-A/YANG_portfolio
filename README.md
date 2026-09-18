@@ -1,10 +1,10 @@
-# Our-Memory
+# YANG_portfolio
 
-*To the best four years.*
+个人作品集：项目实践与 AI Agent 技能合集。
 
 ## 关于本仓库
 
-**YANG_portfolio** 是我的个人作品集仓库，用来沉淀和展示学习与实践过程中产出的内容，包括项目作品、实验记录，以及可复用的 AI Agent 技能。
+本仓库用来沉淀和展示学习与实践过程中产出的内容，包括项目作品、实验记录，以及可复用的 AI Agent 技能。
 
 ## 目录导航
 

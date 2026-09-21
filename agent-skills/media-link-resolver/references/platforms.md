@@ -18,7 +18,7 @@
 | Instagram | 4 | Portrait | scontent-*.cdninstagram.com | ❌（过期） |
 | 搜狐 | 4 | GIF | q*.itc.cn / p*.itc.cn | ✅ |
 | 抖音 | 3 | Portrait / Video | p*.douyinpic.com | ❌（签名） |
-| 爱给网 | 3 | GIF | s1.aigei.com | ❌（token） |
+| 爱给网 | 3 | GIF | s1.aaigei.com | ❌（token） |
 | 堆糖 | 2 | GIF | c-ssl.duitang.com | ✅ |
 | 摄图网 | 2 | GIF | wimg.588ku.com | ❌（有时效） |
 | Bilibili | 1 | Video | player.bilibili.com | ✅ |
@@ -57,8 +57,10 @@ xhslink短链 ──→ 302重定向 ──→ 笔记长链 ──→ GET笔记H
                     │                                     │                                     │
                     ↓                                     ↓                                     ↓
         ci.xiaohongshu.com                    sns-video-*.xhscdn.com                 originVideoUrl
-        无签名 · 永久有效                        sign+t · 30分钟过期                      带签名 · 时效
+        无签名 · 永久有效                  去参换 bd/hw/al/bak-v1 永久（v4.10）            带签名 · 时效
 ```
+
+> **v4.10 修正**：视频**有永久方案**！把 `/stream/.../<hash>_19.mp4` 的签名域（`sns-video-v4/v6/qc.xhscdn.com`，带 `sign`/`t`，约 30 分钟过期）换成镜像域 **`sns-video-bd / sns-video-hw / sns-video-al / sns-bak-v1.xhscdn.com` 并删除全部查询参数**，即可免 Referer / 免 UA 直出（实测 200/206 `video/mp4`，字节数与签名链一致）。脚本 `xhs_video_permanent()` 已内置自动升格。另：短链域名需同时支持 **`xhslink.cn`**（手机端分享）与 `xhslink.com`。
 
 ### 1.2 短链还原（必须移动端 UA）
 

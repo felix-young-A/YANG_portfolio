@@ -18,7 +18,7 @@
 | Instagram | 4 | Portrait | scontent-*.cdninstagram.com | ❌（过期） |
 | 搜狐 | 4 | GIF | q*.itc.cn / p*.itc.cn | ✅ |
 | 抖音 | 3 | Portrait / Video | p*.douyinpic.com | ❌（签名） |
-| 爱给网 | 3 | GIF | s1.aaigei.com | ❌（token） |
+| 爱给网 | 3 | GIF | s1.aigei.com | ❌（token） |
 | 堆糖 | 2 | GIF | c-ssl.duitang.com | ✅ |
 | 摄图网 | 2 | GIF | wimg.588ku.com | ❌（有时效） |
 | Bilibili | 1 | Video | player.bilibili.com | ✅ |

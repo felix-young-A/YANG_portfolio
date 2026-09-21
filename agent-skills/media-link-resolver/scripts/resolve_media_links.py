@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Media Link Resolver v4.7 - 社媒平台媒体直链解析与嗅探器
+Media Link Resolver v4.10 - 社媒平台媒体直链解析与嗅探器
 =========================================================
 将各大平台（国内 20+ / 海外 15+）的 CDN 链接、签名链接、短链、网页链接
 转换为【永久直链】或【最优直链】。
@@ -384,6 +384,44 @@ def sniff_page(url):
 # 3. 各平台解析器（国内 + 海外）
 # ════════════════════════════════════════════════════════════
 
+def _find_chromium():
+    """v4.10 新增：自动探测可用 Chromium/Chrome 可执行文件。
+    优先级：环境变量 DOUYIN_CHROME > ~/.cache/ms-playwright/chromium-*/ > 系统 chromium/chrome。
+    （v4.9 及以前硬编码 /usr/local/bin/chromium，该路径在本机不存在 → 浏览器兜底直接失败。）"""
+    import os, glob
+    env = os.environ.get('DOUYIN_CHROME')
+    if env:
+        return env
+    pats = [
+        '~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome',
+        '~/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux*/headless_shell',
+        '/usr/local/bin/chromium', '/usr/bin/chromium', '/usr/bin/chromium-browser',
+        '/snap/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+    ]
+    for pat in pats:
+        for h in sorted(glob.glob(os.path.expanduser(pat)), reverse=True):
+            if os.path.exists(h):
+                return h
+    return '/usr/local/bin/chromium'
+
+
+# v4.10 新增：小红书视频免签名镜像域（实测：/stream/ 同路径去掉 sign 参数后换域即 206/200 video/mp4）
+XHS_VIDEO_MIRROR_HOSTS = ['sns-video-bd.xhscdn.com', 'sns-video-hw.xhscdn.com',
+                          'sns-video-al.xhscdn.com', 'sns-bak-v1.xhscdn.com']
+
+
+def xhs_video_permanent(url):
+    """小红书签名视频链 → 免签名长期可引用直链列表（去 x-signature 等参数 + 换镜像域）。
+    仅处理 /stream/ 视频路径；ci.xiaohongshu.com 只服务图片，不适用。"""
+    if not url or '/stream/' not in url:
+        return []
+    m = re.match(r'^https?://[^/]+(/stream/[^?]+)', url)
+    if not m:
+        return []
+    path = m.group(1)
+    return [f'https://{h}{path}' for h in XHS_VIDEO_MIRROR_HOSTS]
+
+
 def resolve_xiaohongshu(url):
     """小红书: sns-webpic 签名 → ci.xiaohongshu.com 永久直链；笔记页/短链 → 浏览器拦截 /api/sns/web/v1/feed 提取视频与图片"""
     m = re.search(r'xhscdn\.com/[^/]+/[^/]+/((?:notes_pre_post|spectrum)/[a-z0-9]+)', url)
@@ -396,7 +434,8 @@ def resolve_xiaohongshu(url):
     if m:
         return [f"http://ci.xiaohongshu.com/{m.group(1)}"]
     # ── v4.6: 笔记页 / 短链 → 浏览器拦截 feed API（智Tool API map: /api/sns/web/v1/feed）──
-    if 'xhslink.com' in url:
+    # v4.10: 短链域名扩展 xhslink.cn / .net / rednote.com（手机端分享用 .cn，此前只认 .com → 未匹配平台规则）
+    if re.search(r'xhslink\.(?:com|cn|net)|rednote\.com', url):
         # 短链先还原
         try:
             r = requests.head(url, headers={'User-Agent': BROWSER_UA}, allow_redirects=True, timeout=10)
@@ -438,7 +477,16 @@ def resolve_xiaohongshu(url):
                             break
                 if out:
                     out = list(dict.fromkeys(out))
-                    out.append('[可渲染] 小红书笔记直链（图片需 Referer: xiaohongshu.com；视频 master_url 时效签名）')
+                    # v4.10: 视频 master_url 为时效签名链 → 换免签名镜像域，永久链置顶
+                    perm = []
+                    for u in out:
+                        perm.extend(xhs_video_permanent(u))
+                    if perm:
+                        perm = list(dict.fromkeys(perm))
+                        out = perm + [u for u in out if u not in perm]
+                        out.append('[永久] 小红书 /stream/ 视频免签名镜像域直链（sns-video-bd/hw/al/bak-v1.xhscdn.com，'
+                                   '去掉 sign 类参数，免 Referer 免 UA，实测 200/206 video/mp4），可长期引用')
+                    out.append('[可渲染] 小红书笔记直链（图片需 Referer: xiaohongshu.com）')
                     out.append(f'[笔记] {_note_desc(note.get("title") or note.get("desc"))}')
                     return out
             except Exception:
@@ -452,7 +500,7 @@ def resolve_xiaohongshu(url):
         if login_wall:
             return [f"[登录墙] 小红书需登录后才能读取笔记详情，请在已登录的浏览器会话中解析，或手动复制图片/视频链接 {url}"]
         return [f"[需要登录态或页面未返回数据，浏览器拦截未命中详情 API] {url}"]
-    if 'xhslink.com' in url:
+    if re.search(r'xhslink\.(?:com|cn|net)', url):
         return [f"[短链，需请求还原后再提取 fileId] {url}"]
     return None
 
@@ -638,6 +686,7 @@ def resolve_douyin_page(url):
                     out.extend(durls)
                     out.append('[时效] 抖音图片直链带签名（签名参数必带；Referer 可省略），'
                                '约30天过期，长期保存请 --save 落盘')
+                out.extend(_douyin_music_entries(item))  # v4.9: BGM 音频
                 return out
 
         # ── 纯图文作品: img_bitrate 高清档（~q80 无尺寸模板 = 原图直出）──
@@ -682,9 +731,11 @@ def resolve_douyin_page(url):
         if item:
             video = item.get('video') or {}
             if video.get('uri'):
-                return [douyin_play_entry(video['uri']),
+                out = [douyin_play_entry(video['uri']),
                         '[永久] 抖音视频作品：video.uri → video_id 永久转播入口链'
-                        '（免 Referer / 无签名，302 到 douyinvod，200 video/mp4），可长期引用；BGM 可另提取']
+                        '（免 Referer / 无签名，302 到 douyinvod，200 video/mp4），可长期引用']
+                out.extend(_douyin_music_entries(item))  # v4.9: BGM 音频
+                return out
             for key in ('play_addr', 'download_addr'):
                 vv = video.get(key) or {}
                 for u in (vv.get('url_list') or []):
@@ -692,8 +743,8 @@ def resolve_douyin_page(url):
                     if not u.startswith('http'):
                         continue
                     if 'ies-music' in u or '.mp3' in u or 'music' in u:
-                        continue  # BGM 音频，跳过
-                    return [u, '[可渲染] 抖音官方 play 中转链接（无固定过期，302 滚动签名），BGM 可另提取']
+                        continue  # BGM 音频，跳过（已由 _douyin_music_entries 单独提取）
+                    return [u, '[可渲染] 抖音官方 play 中转链接（无固定过期，302 滚动签名）'] + _douyin_music_entries(item)
             for key in ['playAddr', 'play_addr', 'videoUrl', 'video_url',
                         'originVideoUrl', 'downloadAddr']:
                 m = re.search(rf'"{key}"\s*:\s*"([^"]+)"', html)
@@ -753,6 +804,7 @@ def resolve_douyin_page(url):
                         out.extend(durls)
                         out.append('[时效] 抖音图片直链带签名（签名参数必带；Referer 可省略），'
                                    '约30天过期，长期保存请 --save 落盘')
+                    out.extend(_douyin_music_entries(detail))  # v4.9: BGM 音频
                     return out
                 durls, dmeta = _douyin_images_from_detail(detail)
                 if durls:
@@ -762,10 +814,11 @@ def resolve_douyin_page(url):
                     if dmeta:
                         dims = ' / '.join(f"{m['width']}x{m['height']}" for m in dmeta)
                         out.append(f'[尺寸] 各图 {dims}')
+                    out.extend(_douyin_music_entries(detail))  # v4.9: BGM 音频
                     return out
                 vu = _douyin_video_from_detail(detail)
                 if vu:
-                    return [vu, '[可渲染] 抖音官方 play 中转链接（无固定过期，302 滚动签名）']
+                    return [vu, '[可渲染] 抖音官方 play 中转链接（无固定过期，302 滚动签名）'] + _douyin_music_entries(detail)
     except Exception:
         pass
     return None
@@ -876,47 +929,52 @@ def _extract_aweme_id(url):
         return m.group(1)
     return None
 
-def _douyin_detail_via_browser(aweme_id, timeout=45):
+def _douyin_detail_via_browser(aweme_id, timeout=45, retries=3):
     """通过无头浏览器获取抖音作品 detail JSON（应对新版【客户端渲染】分享页 SSR 无图 + 反爬签名）。
     流程：访问 douyin.com + 分享页拿 cookie/msToken → APIRequestContext 调 detail 接口 → 解析 aweme_detail。
     依赖 playwright + chromium（可用环境变量 DOUYIN_CHROME 指定浏览器路径）。
+    v4.9：浏览器偶发被风控/拿不到 detail（实测约 1/3 概率空返回），自动重试 retries 次。
     返回 aweme_detail dict 或 None。"""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         return None
     import os, time
-    exe = os.environ.get('DOUYIN_CHROME', '/usr/local/bin/chromium')
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, executable_path=exe,
-                                        args=['--no-sandbox', '--disable-blink-features=AutomationControlled'])
-            ctx = browser.new_context(user_agent=BROWSER_UA, locale='zh-CN',
-                                      viewport={"width": 1280, "height": 900})
-            page = ctx.new_page()
-            try:
-                page.goto('https://www.douyin.com/', timeout=20000, wait_until='domcontentloaded')
-            except Exception:
-                pass
-            time.sleep(2)
-            try:
-                page.goto(f'https://www.iesdouyin.com/share/note/{aweme_id}/', timeout=25000,
-                          wait_until='domcontentloaded')
-            except Exception:
-                pass
-            time.sleep(2)
-            # 用 APIRequestContext（复用会话 cookie/msToken）调 detail 接口
-            r = ctx.request.get(
-                f'https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id={aweme_id}'
-                f'&device_platform=webapp&aid=6383&channel=channel_pc_web',
-                headers={'Referer': 'https://www.douyin.com/', 'Accept': 'application/json'})
-            body = r.text() if r.status == 200 else ''
-            browser.close()
-            if body:
-                data = json.loads(body)
-                return data.get('aweme_detail') or None
-    except Exception:
-        pass
+    exe = _find_chromium()  # v4.10: DOUYIN_CHROME 优先，其次自动探测 ms-playwright/系统 chromium
+    for attempt in range(max(1, retries)):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True, executable_path=exe,
+                                            args=['--no-sandbox', '--disable-blink-features=AutomationControlled'])
+                ctx = browser.new_context(user_agent=BROWSER_UA, locale='zh-CN',
+                                          viewport={"width": 1280, "height": 900})
+                page = ctx.new_page()
+                try:
+                    page.goto('https://www.douyin.com/', timeout=20000, wait_until='domcontentloaded')
+                except Exception:
+                    pass
+                time.sleep(2)
+                try:
+                    page.goto(f'https://www.iesdouyin.com/share/note/{aweme_id}/', timeout=25000,
+                              wait_until='domcontentloaded')
+                except Exception:
+                    pass
+                time.sleep(2)
+                # 用 APIRequestContext（复用会话 cookie/msToken）调 detail 接口
+                r = ctx.request.get(
+                    f'https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id={aweme_id}'
+                    f'&device_platform=webapp&aid=6383&channel=channel_pc_web',
+                    headers={'Referer': 'https://www.douyin.com/', 'Accept': 'application/json'})
+                body = r.text() if r.status == 200 else ''
+                browser.close()
+                if body:
+                    data = json.loads(body)
+                    detail = data.get('aweme_detail') or None
+                    if detail:
+                        return detail
+        except Exception:
+            pass
+        time.sleep(2 + attempt * 2)  # 退避后重试
     return None
 
 def _douyin_images_from_detail(detail):
@@ -962,6 +1020,68 @@ def _douyin_video_from_detail(detail):
             if u.startswith('http') and 'music' not in u and '.mp3' not in u and 'ies-music' not in u:
                 return u
     return None
+
+def _douyin_music_entries(detail):
+    """v4.9 新增：从 aweme_detail 提取 BGM 音频直链。
+    此前脚本在取视频时主动跳过 BGM（'BGM 可另提取'），未给自动化方法；现内置：
+    读 detail.music.play_url.url_list（douyinstatic music 域，无防盗链），
+    并兜底在整个 detail JSON 里正则找 ies-music/*.mp3。返回 [url..., note]，无 BGM 返回 []。"""
+    out, seen = [], set()
+    def _push(u):
+        u = clean_escaped(u)
+        if u.startswith('http') and u not in seen:
+            seen.add(u)
+            out.append(u)
+    music = (detail or {}).get('music') or {}
+    for u in ((music.get('play_url') or {}).get('url_list') or []):
+        _push(u)
+    # 兜底：整个 detail 里正则找 ies-music / douyinstatic music mp3
+    if not out:
+        try:
+            raw = json.dumps(detail, ensure_ascii=False)
+            for u in set(re.findall(r'https?:[^"\\ ]*?(?:ies-music|douyinstatic[^"\\ ]*?music)[^"\\ ]*?\.mp3[^"\\ ]*', raw)):
+                _push(u)
+        except Exception:
+            pass
+    if out:
+        title = music.get('title') or ''
+        extra = f"（{title}）" if title else ''
+        out.append(f"[音频] 抖音 BGM 音频直链{extra}，douyinstatic music 域无防盗链，可嵌入 <audio> 播放")
+    return out
+
+def _douyin_entries_from_detail(detail):
+    """v4.10 新增：把 aweme_detail 直接组装为最终交付条目（视频永久入口链 / 图文 + BGM + 说明）。"""
+    base = 'https://www.douyin.com/video/'
+    aid = detail.get('aweme_id') or ''
+    out = []
+    vid = _douyin_vid(detail.get('video') or {})
+    if vid:
+        out.extend(douyin_play_entry_alts(vid))
+        out.append('[永久] 抖音 video_id 永久转播入口链（免 Referer / 无签名，302 到 douyinvod，实测 200 video/mp4），可长期引用')
+    imgs, _meta = _douyin_images_from_detail(detail)
+    if imgs:
+        out.extend(imgs)
+        out.append(f'[图文] 共 {len(imgs)} 张；douyinpic CDN 带 x-signature（约 30 天过期），需长期引用请 --save 落盘或转存自有图床')
+    if not out and aid:
+        out.append(f'{base}{aid}')
+    if detail.get('desc'):
+        out.append(f'[作品] {_note_desc(detail.get("desc"))}')
+    if aid:
+        out.append(f'[来源] {base}{aid}')
+    out.extend(_douyin_music_entries(detail))
+    return out
+
+
+def verify_url(url):
+    """v4.9 新增：HEAD 验证直链可用性。返回 (status:int|None, content_type:str, note:str)。
+    视频入口链预期 302→video/*；音频预期 200 audio/*；图片直链预期 200 image/*。"""
+    if not HAS_REQUESTS:
+        return None, '', 'requests 不可用'
+    try:
+        r = requests.head(url, headers={'User-Agent': MOBILE_UA}, timeout=10, allow_redirects=True)
+        return r.status_code, r.headers.get('Content-Type', ''), ''
+    except Exception as e:
+        return None, '', str(e)[:120]
 
 def download_to_dir(url, out_dir, referer='https://www.douyin.com/'):
     """永久化落盘：把（带签名的）媒体下载到本地目录，返回本地绝对路径（永久保存）或 None。
@@ -1009,6 +1129,23 @@ def resolve_douyin(url):
     if 'douyinstatic.com' in url and ('music' in url or url.endswith('.mp3')):
         return [url, "[音频] 抖音 BGM 音频直链，无 Referer 限制，可嵌入 <audio> 播放"]
     if 'v.douyin.com' in url or 'iesdouyin.com' in url:
+        # ── v4.10: 短链先 302 还原拿 aweme_id → detail API（视频永久入口链 + 图文 + BGM），失败回退 SSR 嗅探 ──
+        aid = _extract_aweme_id(url)
+        if not aid and 'v.douyin.com' in url:
+            for _ua in (MOBILE_UA, BROWSER_UA):
+                try:
+                    rr = requests.head(url, headers={'User-Agent': _ua}, allow_redirects=True, timeout=12)
+                    aid = _extract_aweme_id(rr.url)
+                except Exception:
+                    aid = None
+                if aid:
+                    break
+        if aid:
+            _detail = _douyin_detail_via_browser(aid)
+            if _detail:
+                _out = _douyin_entries_from_detail(_detail)
+                if _out:
+                    return _out
         r = resolve_douyin_page(url)
         if r:
             # 探测媒体真实类型（动图 webp 等），标注在 notes
@@ -1029,7 +1166,7 @@ def resolve_douyin(url):
 #   A. 完整媒体扩展名 + MIME 类型表（猫抓 init.js Ext/Type 表）
 #   B. 响应头嗅探（猫抓 background.js findMedia 三重判断：扩展名/Content-Type/资源类型）
 #   C. 平台 CDN 域名清单（智Tool manifest host_permissions，嗅探识别平台媒体）
-#   D. M3U8 master 按 BANDWIDTH 选最高清档（猫抓 m3u8.js hls.js 选档思路）
+#   D. M3U8 master 按 BANDWIDTH 选最高清档（猫抓 m3u8.js 用 hls.js 选档思路）
 #   E. 小红书/微博 浏览器拦截页面自身 API 响应（智Tool inject.js API map 思路）
 # ════════════════════════════════════════════════════════════
 # A. 完整媒体扩展名（猫抓 init.js Ext 表）
@@ -1051,7 +1188,7 @@ CATCATCH_MIME = [
 PLATFORM_CDN_DOMAINS = {
     '抖音/TikTok': ['.douyinvod.com', '.douyinpic.com', '.byteimg.com', '.ibyteimg.com',
                    '.tiktokcdn.com', '.tiktokcdn-us.com', '.tiktokv.com', '.muscdn.com'],
-    '小红书': ['.xhscdn.com', '.xhslink.com', '.rednote.com', '.xiaohongshu.com'],
+    '小红书': ['.xhscdn.com', '.xhslink.com', '.xhslink.cn', '.rednote.com', '.xiaohongshu.com'],
     '微博': ['.sinaimg.cn', '.weibocdn.com', '.weibo.com', '.wbimg.cn'],
     '头条': ['.toutiaoimg.com', '.toutiaovod.com', '.toutiaostatic.com', 'vod.bytedanceapi.com'],
     'B站': ['.bilibili.com', '.biliapi.net', '.hdslb.com', '.bilivideo.com', '.bilivideo.cn'],
@@ -1113,7 +1250,7 @@ def _browser_intercept_api(start_url, api_fragments, timeout=45):
     except ImportError:
         return []
     import os, time
-    exe = os.environ.get('DOUYIN_CHROME', '/usr/local/bin/chromium')
+    exe = _find_chromium()  # v4.10: DOUYIN_CHROME 优先，其次自动探测 ms-playwright/系统 chromium
     captured = []
     try:
         with sync_playwright() as p:
@@ -1430,7 +1567,7 @@ def resolve_generic(url):
 
 PLATFORM_RULES = [
     # ── 国内图床/CDN（永久优先）──
-    (r'xiaohongshu\.com|xhscdn\.com|xhslink\.com|ci\.xiaohongshu\.com', resolve_xiaohongshu, '小红书', True),
+    (r'xiaohongshu\.com|xhscdn\.com|xhslink\.(?:com|cn|net)|rednote\.com|ci\.xiaohongshu\.com', resolve_xiaohongshu, '小红书', True),
     (r'sinaimg\.cn|weibo\.com|weibo\.cn', resolve_weibo, '微博', True),
     (r'bdstatic\.com|baidu\.com|hiphotos\.baidu', resolve_baidu, '百度', True),
     (r'itc\.cn', resolve_sohu, '搜狐', True),
@@ -1485,7 +1622,7 @@ PLATFORM_RULES = [
 PLATFORM_META = [(p, n) for p, _, n, _ in PLATFORM_RULES]
 
 
-def resolve_url(url, with_type=True):
+def resolve_url(with_type=True):
     """解析 URL，返回 {platform, permanent, original, type, urls, notes, expiry}"""
     for pattern, resolver, name, permanent in PLATFORM_RULES:
         if re.search(pattern, url, re.I):
@@ -1530,13 +1667,14 @@ def resolve_url(url, with_type=True):
 # ════════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description='社媒平台媒体直链解析器 v4.7 (国内+海外, 优先永久直链; 抖音支持 --save 永久化落盘 + --play-entry 永久转播入口链)')
+    parser = argparse.ArgumentParser(description='社媒平台媒体直链解析器 v4.9 (国内+海外, 优先永久直链; 抖音支持 --save 永久化落盘 + --play-entry 永久转播入口链 + 内置 BGM 音频提取 + --verify 验活)')
     parser.add_argument('urls', nargs='*', help='要解析的 URL')
     parser.add_argument('--stdin', action='store_true', help='从 stdin 读取 URL（每行一个）')
     parser.add_argument('--batch', type=str, help='从文件读取 URL（每行一个）')
     parser.add_argument('--sniff', type=str, help='猫抓式页面嗅探: 请求网页并提取所有媒体直链')
     parser.add_argument('--save', type=str, metavar='DIR', help='永久化落盘: 把带签名的时效媒体下载到本地目录（永久保存），同时打印原始直链')
     parser.add_argument('--play-entry', nargs='+', metavar='VID', help='抖音 video_id（video.uri）→ 永久转播入口链，可传多个或用逗号分隔（v4.7）')
+    parser.add_argument('--verify', action='store_true', help='v4.9: 对输出的每条直链做 HEAD 验活，报告 HTTP 状态码与 Content-Type（视频入口链预期 302→video/*，音频预期 200 audio/*）')
     parser.add_argument('--json', action='store_true', help='JSON 格式输出')
     parser.add_argument('--platforms', action='store_true', help='列出所有支持平台')
     args = parser.parse_args()
@@ -1611,6 +1749,14 @@ def main():
                     r['saved'] = saved
                     r['notes'].append(f"[永久化] 已下载到本地 {len(saved)} 个文件，永久保存不随签名过期")
 
+    # v4.9: --verify 对每条直链 HEAD 验活
+    if args.verify:
+        for r in results:
+            r['checks'] = []
+            for u in r['urls']:
+                st, ct, err = verify_url(u)
+                r['checks'].append({'url': u, 'status': st, 'content_type': ct, 'error': err})
+
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))
     else:
@@ -1624,6 +1770,10 @@ def main():
             print(f"直链:")
             for u in r['urls']:
                 print(f"  → {u}")
+            for chk in r.get('checks', []):
+                st = chk['status']
+                tag = f"{st} {chk['content_type']}".strip() if st else f"❌ {chk['error']}"
+                print(f"     [验活] {tag}")
             for n in r['notes']:
                 print(f"  ⚠ {n}")
             for s in r.get('saved', []):

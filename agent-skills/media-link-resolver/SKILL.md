@@ -3,10 +3,22 @@ name: media-link-resolver
 description: |
   社媒平台媒体直链解析与嗅探。将国内 25+ / 海外 15+ 平台（小红书、微博、抖音、Instagram、Bilibili、YouTube、百度、Pinterest、Reddit、Facebook 等 44+ 项规则）的 CDN 链接、签名链接、短链、网页链接转换为永久直链或最优直链。支持猫抓式页面嗅探（--sniff）从网页中提取媒体直链，支持 M3U8/MPD 流解析。
   媒体类型全覆盖：图片(Image)、GIF、动图（Animated WebP / APNG / LivePhoto 动态）、视频(Video)、音频(Audio)、流媒体(Stream)，通过 URL 特征 + HTTP 魔数探测 + 响应头三重识别，静态图片与动图不混淆。
-  使用场景：(1) 需要永久直链写入 records (2) 签名过期链接需要转换 (3) 批量解析多平台链接 (4) 从网页中嗅探提取所有媒体 (5) 小红书 sns-webpic 转 ci.xiaohongshu.com 永久链接 (6) 微博无水印原图 (7) Obsidian Records Manager 渲染前直链升级 (8) 抖音/带签名媒体 --save 永久化落盘 (9) 小红书/微博笔记页浏览器拦截 API 解析 (10) M3U8 master 选最高清档 (11) 抖音 slides/视频作品 video_id → 永久转播入口链（免 Referer / 无签名，长期可引用）
+  使用场景：(1) 需要永久直链写入 records (2) 签名过期链接需要转换 (3) 批量解析多平台链接 (4) 从网页中嗅探提取所有媒体 (5) 小红书 sns-webpic 转 ci.xiaohongshu.com 永久链接 (6) 微博无水印原图 (7) Obsidian Records Manager 渲染前直链升级 (8) 抖音/带签名媒体 --save 永久化落盘 (9) 小红书/微博笔记页浏览器拦截 API 解析 (10) M3U8 master 选最高清档 (11) 抖音 slides/视频作品 video_id → 永久转播入口链（免 Referer / 无签名，长期可引用）(12) 抖音作品 BGM 音频直链自动提取（v4.9 内置，douyinstatic music 域无防盗链）+ --verify 直链验活 (13) 小红书 xhslink.cn / 抖音 v.douyin.com 短链一键解析（v4.10 自动 302 还原）(14) 小红书 /stream/ 视频免签名镜像域直链（v4.10，长期可引用）(15) 零环境变量跑通浏览器兜底（v4.10 chromium 自动探测）
 ---
-# Media Link Resolver v4.8
+# Media Link Resolver v4.10
+
+**v4.10 新增（2026-09-21）小红书免签名视频链 + 短链域名扩展 + 抖音短链一键解析 + chromium 自动探测：**
+- **小红书视频免签名直链（重大修正）**：此前文档称"视频 master_url 时效签名、无永久链"——**实测错误**。小红书 `/stream/.../<hash>_19.mp4` 路径把签名域 `sns-video-v4/v6/qc.xhscdn.com` 换成 **`sns-video-bd / sns-video-hw / sns-video-al / sns-bak-v1.xhscdn.com` 并删掉全部 `?sign=` 类参数**，即可免 Referer、免 UA 直出（实测 200/206 `video/mp4`，字节数与签名链一致，无过期）。v4.10 新增 `xhs_video_permanent()`，在浏览器拦截 feed 出结果时**自动把视频签名链升格为 4 条免签名镜像域链并置顶**，同时保留原始链兜底。（`ci.xiaohongshu.com` 仅服务图片，视频走它 404，勿混用。）
+- **小红书短链域名扩展**：手机端分享的短链是 **`xhslink.cn`**（非 `.com`），旧版只认 `xhslink.com` → 直接落"未匹配到已知平台规则"。v4.10 起 `xhslink.com / .cn / .net` 与 `rednote.com` 均识别并先 302 还原再拦截 feed API。
+- **抖音短链一键解析**：`v.douyin.com` 短链此前走 SSR 嗅探（新版客户端渲染页常拿不到数据）。v4.10 起先 HEAD 302 还原出 `aweme_id`（移动 UA 优先，回退桌面 UA）→ 直接调 detail API → 新增 `_douyin_entries_from_detail()` 组装为最终条目（**视频永久入口链（三主机）+ 图文 + BGM + 作品描述 + 来源**），失败才回退旧 SSR 路径。
+- **chromium 路径自动探测**：v4.9 及以前硬编码 `DOUYIN_CHROME` 默认值 `/usr/local/bin/chromium`——**该路径实测不存在**，未设环境变量时浏览器兜底 100% 失败。v4.10 新增 `_find_chromium()`：环境变量优先 → 自动 glob `~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome` → 系统 chromium/google-chrome，**现在无需任何环境变量即可跑通浏览器兜底**。
 社媒平台媒体直链解析器，**44+ 条规则，覆盖国内 25+ / 海外 15+ 平台，优先返回永久直链**。
+
+**v4.9 新增（2026-09-19）抖音 BGM 音频内置提取 + 浏览器重试 + --verify 验活：**
+- **BGM 不再"另提取"**：此前脚本在取视频时主动跳过 BGM（`continue`），文档只写"BGM 可另提取"却没给方法。v4.9 新增 `_douyin_music_entries(detail)`，自动从 `detail.music.play_url.url_list` 提取 douyinstatic music 域 mp3（无防盗链），并兜底在整个 detail JSON 里正则找 `ies-music/*.mp3`。**SSR 路径与浏览器兜底路径、slides/视频/纯图文所有分支都会附带 BGM 链接**，无需再手写脚本抠字段。
+- **浏览器兜底自动重试**：`_douyin_detail_via_browser` 实测约 1/3 概率首次返回空（抖音风控/无头指纹），v4.9 起默认 `retries=3`，退避 2/4/6 秒后重试，成功率显著提升。
+- **`--verify` 验活**：对输出的每条直链做 HEAD，打印 HTTP 状态码 + Content-Type（视频入口链预期 302→`video/mp4`、音频预期 200 `audio/mpeg`、图片预期 200 `image/*`），JSON 模式下写入 `checks` 字段。解析完即验活，杜绝"猜链/死链"。
+- 实测案例（aweme_id `7686775797734139877`，slides 作品）：一条命令同时输出 视频永久入口链（200 video/mp4）+ 图片直链 + BGM 双线路 mp3（200 audio/mpeg，《@Jiaozi创作的原声》）。
 
 **v4.8 修正（2026-09-17）抖音 vid 提取回退（实测踩坑）：**
 - 部分 slides 详情响应中 `images[i].video.uri` **为空**，真实 vid 在 `images[i].video.play_addr.uri`（形如 `v0200fg10000dal8p1vog65thq9b1jo0`）。v4.8 起新增 `_douyin_vid()`，按 `video.uri → play_addr.uri → play_addr_h264/lowbr → bit_rate[].play_addr.uri` 顺序回退提取，且**只接受纯 id 形态**（不含 `http`、不含 `/`），避免把 BGM mp3 URL 误当 vid 生成废链。
@@ -24,7 +36,7 @@ description: |
 - **响应头嗅探**（猫抓 findMedia 三重判断思路）：扩展名/魔数无法判定的 URL，按 Content-Type / Content-Length / Content-Range / Content-Disposition 判定媒体类型与大小。
 - **M3U8 master 选最高清档**（猫抓 hls.js 思路）：解析 `#EXT-X-STREAM-INF` 的 BANDWIDTH/RESOLUTION，按带宽从高到低排序输出（最高清档在前）。
 - **平台 CDN 域名识别**（智Tool manifest host_permissions）：9 大平台 CDN 域名清单（douyinvod/douyinpic/byteimg、xhscdn、sinaimg、toutiaovod、bilivideo、yximgs 等），嗅探结果自动标注平台。
-- **小红书笔记页解析**（智Tool API map：`/api/sns/h5/v1/note_info` + `/api/sns/web/v1/feed`）：浏览器拦截详情 API 提取视频（h264 master_url / origin_video_key）与图片（url_default/url_pre/url_720w），有登录墙时明确提示。
+- **小红书笔记页解析**（智Tool API map：`/api/sns/h5/v1/note_info` + `/api/sns/web/v1/feed`）：浏览器拦截详情 API 提取视频（h264 master_url / origin_video_key）与图片（url_default/url_pre/url_720w），有登录墙时明确提示。**v4.10：输出的视频链会自动升格为 `sns-video-bd/hw/al/bak-v1.xhscdn.com` 免签名镜像域链并置顶（去 sign 参数，长期可用）；短链域名支持 `xhslink.cn` / `.com` / `.net` 与 `rednote.com`。**
 - **微博详情页解析**（智Tool API map：`/ajax/statuses/show` + `/tv/api/component`）：浏览器拦截提取图片（oslarge 无水印永久）与视频（mp4_720p/mp4_hd 等）。
 - **通用浏览器拦截器 `_browser_intercept_api`**：打开页面 → 拦截页面自身 JSON API 响应（页面已自带签名/登录态），解决签名类反爬。
 
@@ -46,8 +58,10 @@ python3 scripts/resolve_media_links.py "https://weibo.com/{uid}/{status_id}"
 # 【v4.7】抖音 video_id（video.uri / slides 每片 uri）→ 永久转播入口链
 python3 scripts/resolve_media_links.py --play-entry v0200f1a2b3c
 python3 scripts/resolve_media_links.py --play-entry "vid1,vid2" --json
-# 抖音分享页解析（自动识别 slides 作品并输出每片永久入口链）
+# 抖音分享页解析（自动识别 slides 作品并输出每片永久入口链 + BGM 音频直链）
 python3 scripts/resolve_media_links.py "https://v.douyin.com/xxxx/"
+# 【v4.9】解析后自动 HEAD 验活（打印状态码 + Content-Type），建议总是带上
+python3 scripts/resolve_media_links.py --verify "https://v.douyin.com/xxxx/"
 # 列表全部平台
 python3 scripts/resolve_media_links.py --platforms
 ```

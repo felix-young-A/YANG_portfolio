@@ -1166,7 +1166,7 @@ def resolve_douyin(url):
 #   A. 完整媒体扩展名 + MIME 类型表（猫抓 init.js Ext/Type 表）
 #   B. 响应头嗅探（猫抓 background.js findMedia 三重判断：扩展名/Content-Type/资源类型）
 #   C. 平台 CDN 域名清单（智Tool manifest host_permissions，嗅探识别平台媒体）
-#   D. M3U8 master 按 BANDWIDTH 选最高清档（猫抓 m3u8.js 用 hls.js 选档思路）
+#   D. M3U8 master 按 BANDWIDTH 选最高清档（猫抓 m3u8.js hls.js 选档思路）
 #   E. 小红书/微博 浏览器拦截页面自身 API 响应（智Tool inject.js API map 思路）
 # ════════════════════════════════════════════════════════════
 # A. 完整媒体扩展名（猫抓 init.js Ext 表）
@@ -1622,7 +1622,7 @@ PLATFORM_RULES = [
 PLATFORM_META = [(p, n) for p, _, n, _ in PLATFORM_RULES]
 
 
-def resolve_url(with_type=True):
+def resolve_url(url, with_type=True):
     """解析 URL，返回 {platform, permanent, original, type, urls, notes, expiry}"""
     for pattern, resolver, name, permanent in PLATFORM_RULES:
         if re.search(pattern, url, re.I):
